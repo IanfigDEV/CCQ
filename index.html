@@ -1,13 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mapa 3D Estoque</title>
-
+  <title>Mapa 3D Estoque OSG</title>
   <style>
-    body { margin: 0; overflow: hidden; font-family: Arial; }
-
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial; }
     canvas { display: block; }
-
     #buscaBox {
       position: absolute;
       top: 20px;
@@ -16,8 +13,8 @@
       padding: 15px;
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      z-index: 10;
     }
-
     #info {
       position: absolute;
       bottom: 20px;
@@ -26,34 +23,23 @@
       padding: 15px;
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      z-index: 10;
     }
-
-    input {
-      padding: 8px;
-      margin-right: 5px;
-    }
-
-    button {
-      padding: 8px;
-      cursor: pointer;
-    }
+    input { padding: 8px; margin-right: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    button { padding: 8px 15px; cursor: pointer; background: #002D72; color: white; border: none; border-radius: 4px; }
+    button:hover { background: #001a4d; }
   </style>
 </head>
 
 <body>
 
-<!-- 🔍 BUSCA -->
 <div id="buscaBox">
   <input id="busca" placeholder="Digite o lote">
   <button onclick="buscarLote()">Buscar</button>
 </div>
 
-<!-- 📊 INFO -->
-<div id="info">
-  Nenhum lote selecionado
-</div>
+<div id="info">Nenhum lote selecionado</div>
 
-<!-- IMPORTMAP -->
 <script type="importmap">
 {
   "imports": {
@@ -63,7 +49,6 @@
 </script>
 
 <script type="module">
-
 import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
@@ -75,75 +60,66 @@ const lotes = {
   "789": { pos: "C3", produto: "Arruela", qtd: 100 }
 };
 
-// ================== CENA ==================
+// ================== CENA & CONFIG ==================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf0f0f0);
-
-// ================== CAMERA ==================
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-camera.position.set(8, 8, 12);
+camera.position.set(12, 12, 18);
 
-// ================== RENDER ==================
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// ================== CONTROLES ==================
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
-// ================== LUZ ==================
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-dirLight.position.set(10, 10, 10);
+dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
-// ================== VARIÁVEIS ==================
 let modelo;
 let objetoSelecionado = null;
-
-// ================== LOADER ==================
 const loader = new GLTFLoader();
 
+// ================== CARREGAMENTO ==================
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
     scene.add(modelo);
+    console.log("Modelo carregado com sucesso!");
 
-    console.log("Modelo carregado!");
+    // TRATAMENTO DA URL (PULO DO GATO)
+    const params = new URLSearchParams(window.location.search);
+    const dadoUrl = params.get("pos");
 
-    modelo.traverse((child) => {
-        if (child.name) console.log("Objeto:", child.name);
-    });
+    if (dadoUrl) {
+        console.log("DADO RECEBIDO DA URL:", dadoUrl);
+        
+        // Tenta traduzir Código -> Posição
+        const loteEncontrado = lotes[dadoUrl];
+        const posicaoFinal = loteEncontrado ? loteEncontrado.pos : dadoUrl;
 
-    // URL
-    // Procure esse trecho no seu loader e ajuste assim:
-const params = new URLSearchParams(window.location.search);
-const pos = params.get("pos");
-
-if (pos) {
-    console.log("Tentando localizar via URL:", pos);
-    // Um pequeno timeout de 500ms garante que o modelo já está renderizado
-    setTimeout(() => {
-        destacar(pos);
-    }, 500);
-}
+        setTimeout(() => {
+            destacar(posicaoFinal);
+            if (loteEncontrado) {
+                mostrarInfo(dadoUrl, loteEncontrado);
+            }
+        }, 800);
+    }
 });
 
-// ================== BUSCA ==================
+// ================== FUNÇÕES GLOBAIS ==================
 window.buscarLote = function () {
     const valor = document.getElementById("busca").value;
     const lote = lotes[valor];
-
     if (lote) {
         destacar(lote.pos);
         mostrarInfo(valor, lote);
     } else {
-        alert("Lote não encontrado");
+        alert("Lote não encontrado no banco simulado.");
     }
 };
 
-// ================== INFO ==================
 function mostrarInfo(codigo, lote) {
     document.getElementById("info").innerHTML = `
       <b>Lote:</b> ${codigo} <br>
@@ -153,11 +129,10 @@ function mostrarInfo(codigo, lote) {
     `;
 }
 
-// ================== DESTACAR ==================
 function destacar(nome) {
-
     if (!modelo) return;
 
+    // Resetar destaque anterior
     if (objetoSelecionado) {
         objetoSelecionado.traverse((child) => {
             if (child.isMesh && child.material.originalColor) {
@@ -168,93 +143,61 @@ function destacar(nome) {
     }
 
     const obj = modelo.getObjectByName(nome);
-
     if (!obj) {
-        console.warn("❌ NÃO ENCONTRADO:", nome);
+        console.warn("❌ OBJETO NÃO ENCONTRADO NO GLB:", nome);
         return;
     }
 
     objetoSelecionado = obj;
-
     obj.traverse((child) => {
         if (child.isMesh) {
-            child.material = child.material.clone();
-            child.material.originalColor = child.material.color.clone();
-
-            child.material.color.set(0xff0000);
-            child.material.emissive = new THREE.Color(0x660000);
+            if (!child.material.originalColor) {
+                child.material = child.material.clone();
+                child.material.originalColor = child.material.color.clone();
+            }
+            child.material.color.set(0xff0000); // Vermelho destaque
+            child.material.emissive = new THREE.Color(0x440000);
         }
     });
 
     focarObjeto(obj);
 }
 
-// ================== FOCO ==================
-function focarObjeto(obj) {
+// Tornar a função destacar disponível globalmente
+window.destacar = destacar;
 
+function focarObjeto(obj) {
     const box = new THREE.Box3().setFromObject(obj);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length();
 
     controls.target.copy(center);
 
-    let start = camera.position.clone();
-    let end = new THREE.Vector3(center.x + size, center.y + size, center.z + size);
+    let startPos = camera.position.clone();
+    let endPos = new THREE.Vector3(center.x + size, center.y + size, center.z + size);
 
     let t = 0;
-
-    function animar() {
+    function animarFoco() {
         if (t < 1) {
-            t += 0.02;
-            camera.position.lerpVectors(start, end, t);
-            requestAnimationFrame(animar);
+            t += 0.03;
+            camera.position.lerpVectors(startPos, endPos, t);
+            requestAnimationFrame(animarFoco);
         }
     }
-
-    animar();
+    animarFoco();
 }
 
-// ================== CLIQUE ==================
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-window.addEventListener('click', (event) => {
-
-    if (!modelo) return;
-
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-
-    const intersects = raycaster.intersectObjects(modelo.children, true);
-
-    if (intersects.length > 0) {
-        let obj = intersects[0].object;
-
-        while (obj.parent && obj.parent !== modelo) {
-            obj = obj.parent;
-        }
-
-        destacar(obj.name);
-
-        document.getElementById("info").innerHTML = `
-          <b>Local selecionado:</b> ${obj.name}
-        `;
-    }
-});
-
-// ================== RESPONSIVO ==================
+// ================== CLIQUE & RESIZE ==================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ================== LOOP ==================
+// ================== LOOP ANIMAR ==================
 function animate() {
     requestAnimationFrame(animate);
-
+    
     if (objetoSelecionado) {
         objetoSelecionado.traverse((child) => {
             if (child.isMesh) {
@@ -263,17 +206,12 @@ function animate() {
             }
         });
     }
-
+    
     controls.update();
     renderer.render(scene, camera);
 }
-
-// Adicione isso logo após a definição da function destacar(nome)
-window.destacar = destacar;
-
 animate();
 
 </script>
-
 </body>
 </html>
