@@ -117,10 +117,17 @@ loader.load('estoque.glb', (gltf) => {
     });
 
     // URL
-    const params = new URLSearchParams(window.location.search);
-    const pos = params.get("pos");
+    // Procure esse trecho no seu loader e ajuste assim:
+const params = new URLSearchParams(window.location.search);
+const pos = params.get("pos");
 
-    if (pos) destacar(pos);
+if (pos) {
+    console.log("Tentando localizar via URL:", pos);
+    // Um pequeno timeout de 500ms garante que o modelo já está renderizado
+    setTimeout(() => {
+        destacar(pos);
+    }, 500);
+}
 });
 
 // ================== BUSCA ==================
@@ -260,6 +267,9 @@ function animate() {
     controls.update();
     renderer.render(scene, camera);
 }
+
+// Adicione isso logo após a definição da function destacar(nome)
+window.destacar = destacar;
 
 animate();
 
