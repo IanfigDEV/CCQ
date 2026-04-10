@@ -178,31 +178,24 @@ loader.load('estoque.glb', (gltf) => {
 
     const params = new URLSearchParams(window.location.search);
     const dadoUrl = params.get("pos");
-    const loteUrl = params.get("lote");   // Novo
-    const bitolaUrl = params.get("bitola"); // Novo
+    const loteUrl = params.get("lote");
+    const bitolaUrl = params.get("bitola");
+    const htUrl = params.get("ht");   // NOVO
+    const qtdUrl = params.get("qtd"); // NOVO
 
     if (dadoUrl) {
-        // Se o Power Apps mandou o lote e bitola direto pela URL
         if (loteUrl) {
             const dadosDiretos = {
                 pos: dadoUrl,
                 BITOLA: bitolaUrl || "-",
-                HT: "-", // Se quiser passar o HT, adicione na URL também
-                qtd: "Consulte o App"
+                HT: htUrl || "-",
+                qtd: qtdUrl || "0"
             };
-            destacar(dadoUrl);
-            mostrarInfo(loteUrl, dadosDiretos);
-        } 
-        // Se não mandou, tenta a lógica antiga do Excel (localStorage)
-        else {
-            let codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
-            if (codigoItem) {
+            // Aumentamos o tempo para garantir que o zoom funcione
+            setTimeout(() => {
                 destacar(dadoUrl);
-                mostrarInfo(codigoItem, lotes[codigoItem]);
-            } else {
-                destacar(dadoUrl);
-                document.getElementById("info").innerHTML = `<b>Local:</b> ${dadoUrl} <br> <i>Bipe o lote no Power Apps para ver detalhes.</i>`;
-            }
+                mostrarInfo(loteUrl, dadosDiretos);
+            }, 2000); 
         }
     }
 });
