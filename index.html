@@ -175,43 +175,35 @@ const loader = new GLTFLoader();
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
     scene.add(modelo);
-    console.log("Modelo carregado!");
 
-    // Pega o dado da URL (?pos=...)
     const params = new URLSearchParams(window.location.search);
     const dadoUrl = params.get("pos");
+    const loteUrl = params.get("lote");   // Novo
+    const bitolaUrl = params.get("bitola"); // Novo
 
     if (dadoUrl) {
-        console.log("DADO RECEBIDO DA URL:", dadoUrl);
-        
-        let loteEncontrado = null;
-        let codigoItem = null;
-
-        // 1. Tenta achar o item pelo CÓDIGO (Lote)
-        if (lotes[dadoUrl]) {
-            loteEncontrado = lotes[dadoUrl];
-            codigoItem = dadoUrl;
+        // Se o Power Apps mandou o lote e bitola direto pela URL
+        if (loteUrl) {
+            const dadosDiretos = {
+                pos: dadoUrl,
+                BITOLA: bitolaUrl || "-",
+                HT: "-", // Se quiser passar o HT, adicione na URL também
+                qtd: "Consulte o App"
+            };
+            destacar(dadoUrl);
+            mostrarInfo(loteUrl, dadosDiretos);
         } 
-        // 2. Se não achou, faz a BUSCA REVERSA pela POSIÇÃO (Gaveta)
+        // Se não mandou, tenta a lógica antiga do Excel (localStorage)
         else {
-            codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
+            let codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
             if (codigoItem) {
-                loteEncontrado = lotes[codigoItem];
+                destacar(dadoUrl);
+                mostrarInfo(codigoItem, lotes[codigoItem]);
+            } else {
+                destacar(dadoUrl);
+                document.getElementById("info").innerHTML = `<b>Local:</b> ${dadoUrl} <br> <i>Bipe o lote no Power Apps para ver detalhes.</i>`;
             }
         }
-
-        // 3. Executa o destaque e mostra a info
-        setTimeout(() => {
-            if (loteEncontrado) {
-                // Destaca a posição que está dentro do objeto encontrado
-                destacar(loteEncontrado.pos);
-                mostrarInfo(codigoItem, loteEncontrado);
-            } else {
-                // Se for uma posição que nem tem no Excel, tenta destacar o objeto seco
-                destacar(dadoUrl);
-                document.getElementById("info").innerHTML = `<b>Local:</b> ${dadoUrl} <br> <i>Sem item vinculado nesta posição.</i>`;
-            }
-        }, 800);
     }
 });
 
