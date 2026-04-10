@@ -3,18 +3,27 @@
 <head>
   <title>Mapa 3D Estoque OSG</title>
   <style>
-    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial; }
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial; background: #f0f0f0; }
     canvas { display: block; }
-    #buscaBox {
+    
+    #menuLateral {
       position: absolute;
       top: 20px;
       left: 20px;
-      background: white;
-      padding: 15px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
       z-index: 10;
     }
+
+    .painel {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+      border: 1px solid #ddd;
+    }
+
     #info {
       position: absolute;
       bottom: 20px;
@@ -24,21 +33,54 @@
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.2);
       z-index: 10;
+      min-width: 200px;
     }
-    input { padding: 8px; margin-right: 5px; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 8px 15px; cursor: pointer; background: #002D72; color: white; border: none; border-radius: 4px; }
-    button:hover { background: #001a4d; }
+
+    input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+    button { 
+      padding: 8px 15px; 
+      cursor: pointer; 
+      background: #002D72; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      font-weight: bold;
+      transition: 0.3s;
+    }
+    button:hover { background: #001a4d; transform: scale(1.05); }
+
+    .excel-label {
+      display: block;
+      padding: 10px;
+      border: 2px dashed #007bff;
+      border-radius: 8px;
+      color: #007bff;
+      cursor: pointer;
+      font-size: 13px;
+      text-align: center;
+    }
   </style>
 </head>
 
 <body>
 
-<div id="buscaBox">
-  <input id="busca" placeholder="Digite o lote">
-  <button onclick="buscarLote()">Buscar</button>
+<div id="menuLateral">
+  <div class="painel">
+    <input id="busca" placeholder="Digite o item (Ex: S0104...)">
+    <button id="btnBuscar">Buscar</button>
+  </div>
+
+  <div class="painel">
+    <label for="input-excel" class="excel-label">
+        📂 Atualizar Estoque (Excel)
+    </label>
+    <input type="file" id="input-excel" accept=".xlsx, .xls" style="display: none;">
+  </div>
 </div>
 
-<div id="info">Nenhum lote selecionado</div>
+<div id="info">Carregando sistema...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script type="importmap">
 {
@@ -53,19 +95,64 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
 
-// ================== BANCO (SIMULADO) ==================
-const lotes = {
-  "S00536010": { pos: "S-005", produto: "MACHO", qtd: 0, HT: "1o", BITOLA: "SEMI MACHO 100/B"},
-  "S00536030": { pos: "S-015", produto: "MACHO", qtd: 0, HT: "3o", BITOLA: "SEMI MACHO 100/B"},
-  "S00555710": { pos: "S-114", produto: "MACHO", qtd: 0, HT: "1o", BITOLA: "SEMI MACHO 100/B"},
-  "S00555730": { pos: "S-113", produto: "MACHO", qtd: 0, HT: "3o", BITOLA: "SEMI MACHO 100/B"},
-  "S00801720": { pos: "S-083", produto: "MACHO", qtd: 31, HT: "2o", BITOLA: "SEMI MACHO 010/A"},
-  "S00801730": { pos: "S-064", produto: "MACHO", qtd: 35, HT: "3o", BITOLA: "SEMI MACHO 010/A"},
-  "S00802030": { pos: "S-137", produto: "MACHO", qtd: 351, HT: "3o", BITOLA: "SEMI MACHO 010/A"},
-  "S00802520": { pos: "S-096", produto: "MACHO", qtd: 255, HT: "2o", BITOLA: "SEMI MACHO 010/A"}
-};
+// ================== VARIÁVEIS GLOBAIS & PERSISTÊNCIA ==================
+// Tenta carregar do cache do navegador ao abrir
+let lotes = JSON.parse(localStorage.getItem('estoque_osg_cache')) || {};
+let modelo;
+let objetoSelecionado = null;
 
-// ================== CENA & CONFIG ==================
+// ================== LÓGICA DO EXCEL ==================
+// ================== LÓGICA DO EXCEL (VERSÃO PARA MOVIMENTAÇÕES) ==================
+document.getElementById('input-excel').addEventListener('change', function(e) {
+    const reader = new FileReader();
+    const file = e.target.files[0];
+    if (!file) return;
+
+    document.getElementById("info").innerText = "Processando movimentações...";
+
+    reader.readAsArrayBuffer(file);
+    reader.onload = function(e) {
+        const data = new Uint8Array(reader.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        let novosLotes = {};
+        
+        rows.forEach((row, index) => {
+            if (index === 0) return; // Pula cabeçalho
+
+            const itemID    = row[0]; // Coluna A
+            const ht        = row[1]; // Coluna B
+            const bitola    = row[2]; // Coluna C
+            const posicao   = row[3]; // Coluna D
+            const saldo     = row[7]; // Coluna H (Saldo Atual)
+
+            if (itemID) {
+                const idFormatado = itemID.toString().trim();
+                
+                // Como é um banco de movimentação, o script vai atualizando o objeto.
+                // A última linha do Excel para este ID será a que vai prevalecer no App.
+                novosLotes[idFormatado] = {
+                    pos: posicao ? posicao.toString().trim() : "N/A",
+                    produto: "MACHO",
+                    qtd: (saldo !== undefined && saldo !== "") ? parseFloat(saldo) : 0,
+                    HT: ht ? ht.toString() : "-",
+                    BITOLA: bitola ? bitola.toString() : "-"
+                };
+            }
+        });
+
+        // Salva na memória local (cache)
+        lotes = novosLotes;
+        localStorage.setItem('estoque_osg_cache', JSON.stringify(lotes));
+
+        document.getElementById("info").innerText = "Saldo atualizado: " + Object.keys(lotes).length + " itens únicos.";
+        alert("Planilha de movimentações processada com sucesso! Pegamos os saldos mais recentes.");
+    };
+});
+
+// ================== CENA & CONFIG 3D ==================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf0f0f0);
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -83,61 +170,83 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 1);
 dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
-let modelo;
-let objetoSelecionado = null;
 const loader = new GLTFLoader();
-
-// ================== CARREGAMENTO ==================
+// ================== CARREGAMENTO DO MODELO ==================
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
     scene.add(modelo);
-    console.log("Modelo carregado com sucesso!");
+    console.log("Modelo carregado!");
 
-    // TRATAMENTO DA URL (PULO DO GATO)
+    // Pega o dado da URL (?pos=...)
     const params = new URLSearchParams(window.location.search);
     const dadoUrl = params.get("pos");
 
     if (dadoUrl) {
         console.log("DADO RECEBIDO DA URL:", dadoUrl);
         
-        // Tenta traduzir Código -> Posição
-        const loteEncontrado = lotes[dadoUrl];
-        const posicaoFinal = loteEncontrado ? loteEncontrado.pos : dadoUrl;
+        let loteEncontrado = null;
+        let codigoItem = null;
 
+        // 1. Tenta achar o item pelo CÓDIGO (Lote)
+        if (lotes[dadoUrl]) {
+            loteEncontrado = lotes[dadoUrl];
+            codigoItem = dadoUrl;
+        } 
+        // 2. Se não achou, faz a BUSCA REVERSA pela POSIÇÃO (Gaveta)
+        else {
+            codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
+            if (codigoItem) {
+                loteEncontrado = lotes[codigoItem];
+            }
+        }
+
+        // 3. Executa o destaque e mostra a info
         setTimeout(() => {
-            destacar(posicaoFinal);
             if (loteEncontrado) {
-                mostrarInfo(dadoUrl, loteEncontrado);
+                // Destaca a posição que está dentro do objeto encontrado
+                destacar(loteEncontrado.pos);
+                mostrarInfo(codigoItem, loteEncontrado);
+            } else {
+                // Se for uma posição que nem tem no Excel, tenta destacar o objeto seco
+                destacar(dadoUrl);
+                document.getElementById("info").innerHTML = `<b>Local:</b> ${dadoUrl} <br> <i>Sem item vinculado nesta posição.</i>`;
             }
         }, 800);
     }
 });
 
-// ================== FUNÇÕES GLOBAIS ==================
-window.buscarLote = function () {
-    const valor = document.getElementById("busca").value;
+// ================== FUNÇÕES DE BUSCA ==================
+function buscarLote() {
+    const valor = document.getElementById("busca").value.trim();
     const lote = lotes[valor];
+    
     if (lote) {
         destacar(lote.pos);
         mostrarInfo(valor, lote);
     } else {
-        alert("Lote não encontrado no banco simulado.");
+        alert("Item '" + valor + "' não encontrado nos dados carregados.");
     }
-};
+}
+
+document.getElementById('btnBuscar').addEventListener('click', buscarLote);
+document.getElementById('busca').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') buscarLote();
+});
 
 function mostrarInfo(codigo, lote) {
     document.getElementById("info").innerHTML = `
-      <b>Lote:</b> ${codigo} <br>
-      <b>Produto:</b> ${lote.produto} <br>
-      <b>Quantidade:</b> ${lote.qtd} <br>
-      <b>Local:</b> ${lote.pos}
+      <div style="color: #002D72; font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 5px;">DETALHES DO ITEM</div>
+      <b>Item:</b> ${codigo} <br>
+      <b>Bitola:</b> ${lote.BITOLA} <br>
+      <b>HT:</b> ${lote.HT} <br>
+      <b>Estoque:</b> <span style="color: ${lote.qtd > 0 ? 'green' : 'red'}">${lote.qtd}</span> <br>
+      <b>Localização:</b> <mark>${lote.pos}</mark>
     `;
 }
 
 function destacar(nome) {
     if (!modelo) return;
 
-    // Resetar destaque anterior
     if (objetoSelecionado) {
         objetoSelecionado.traverse((child) => {
             if (child.isMesh && child.material.originalColor) {
@@ -149,7 +258,7 @@ function destacar(nome) {
 
     const obj = modelo.getObjectByName(nome);
     if (!obj) {
-        console.warn("❌ OBJETO NÃO ENCONTRADO NO GLB:", nome);
+        alert("Aviso: Posição " + nome + " não existe no modelo 3D.");
         return;
     }
 
@@ -160,16 +269,13 @@ function destacar(nome) {
                 child.material = child.material.clone();
                 child.material.originalColor = child.material.color.clone();
             }
-            child.material.color.set(0xff0000); // Vermelho destaque
+            child.material.color.set(0xff0000); 
             child.material.emissive = new THREE.Color(0x440000);
         }
     });
 
     focarObjeto(obj);
 }
-
-// Tornar a função destacar disponível globalmente
-window.destacar = destacar;
 
 function focarObjeto(obj) {
     const box = new THREE.Box3().setFromObject(obj);
@@ -192,17 +298,15 @@ function focarObjeto(obj) {
     animarFoco();
 }
 
-// ================== CLIQUE & RESIZE ==================
+// ================== LOOP ANIMAR ==================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ================== LOOP ANIMAR ==================
 function animate() {
     requestAnimationFrame(animate);
-    
     if (objetoSelecionado) {
         objetoSelecionado.traverse((child) => {
             if (child.isMesh) {
@@ -211,12 +315,10 @@ function animate() {
             }
         });
     }
-    
     controls.update();
     renderer.render(scene, camera);
 }
 animate();
-
 </script>
 </body>
 </html>
