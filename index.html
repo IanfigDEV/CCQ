@@ -172,31 +172,46 @@ scene.add(dirLight);
 
 const loader = new GLTFLoader();
 // ================== CARREGAMENTO DO MODELO ==================
+// ================== CARREGAMENTO DO MODELO ==================
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
     scene.add(modelo);
+    console.log("Modelo 3D carregado com sucesso!");
 
     const params = new URLSearchParams(window.location.search);
-    const dadoUrl = params.get("pos");
-    const loteUrl = params.get("lote");
+    // Pegamos os dados e limpamos espaços extras
+    const dadoUrl = params.get("pos") ? params.get("pos").trim() : null;
+    const loteUrl = params.get("lote") ? params.get("lote").trim() : null;
     const bitolaUrl = params.get("bitola");
-    const htUrl = params.get("ht");   // NOVO
-    const qtdUrl = params.get("qtd"); // NOVO
+    const htUrl = params.get("ht");
+    const qtdUrl = params.get("qtd");
 
     if (dadoUrl) {
-        if (loteUrl) {
-            const dadosDiretos = {
-                pos: dadoUrl,
-                BITOLA: bitolaUrl || "-",
-                HT: htUrl || "-",
-                qtd: qtdUrl || "0"
-            };
-            // Aumentamos o tempo para garantir que o zoom funcione
-            setTimeout(() => {
+        // Aguarda 2.5 segundos para garantir que o navegador processou a geometria para o zoom
+        setTimeout(() => {
+            if (loteUrl) {
+                // Caso A: Power Apps mandou tudo mastigado
+                const dadosDiretos = {
+                    pos: dadoUrl,
+                    BITOLA: bitolaUrl || "-",
+                    HT: htUrl || "-",
+                    qtd: qtdUrl || "0"
+                };
                 destacar(dadoUrl);
                 mostrarInfo(loteUrl, dadosDiretos);
-            }, 2000); 
-        }
+            } 
+            else {
+                // Caso B: Power Apps mandou só a posição, buscamos no cache do Excel (localStorage)
+                let codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
+                if (codigoItem) {
+                    destacar(dadoUrl);
+                    mostrarInfo(codigoItem, lotes[codigoItem]);
+                } else {
+                    destacar(dadoUrl);
+                    document.getElementById("info").innerHTML = `<b>Localização:</b> ${dadoUrl} <br> <i>Bipe o lote no Power Apps.</i>`;
+                }
+            }
+        }, 2500); 
     }
 });
 
