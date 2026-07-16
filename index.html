@@ -31,9 +31,104 @@
       background: white;
       padding: 15px;
       border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       z-index: 10;
-      min-width: 200px;
+      min-width: 250px;
+      max-height: 350px;
+      overflow-y: auto;
+      border-left: 5px solid #002D72;
+      transition: all 0.3s ease;
+    }
+
+    /* Painel de Itens na Prateleira Clicada (Lateral Direita) */
+    #painelPrateleira {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 320px;
+      max-height: 85vh;
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 10px;
+      box-shadow: 0 4px 25px rgba(0,0,0,0.2);
+      border: 1px solid #ccc;
+      z-index: 10;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .cabecalho-painel {
+      background: #002D72;
+      color: white;
+      padding: 12px 15px;
+      font-weight: bold;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .fechar-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .conteudo-painel {
+      padding: 15px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Cards Acordeão para os Itens da Prateleira */
+    .item-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fafafa;
+      transition: 0.2s;
+    }
+    .item-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .item-header {
+      padding: 10px 12px;
+      background: #f1f5f9;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      font-size: 13px;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .item-details {
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      background: white;
+      display: none;
+    }
+
+    .indicador-expand {
+      transition: transform 0.2s;
+    }
+    .item-card.ativo .indicador-expand {
+      transform: rotate(90deg);
     }
 
     input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
@@ -58,6 +153,7 @@
       cursor: pointer;
       font-size: 13px;
       text-align: center;
+      margin-top: 5px;
     }
   </style>
 </head>
@@ -71,11 +167,24 @@
   </div>
 
   <div class="painel">
+    <label for="input-excel" class="excel-label">Importar Tabela2.xlsx</label>
     <input type="file" id="input-excel" accept=".xlsx, .xls" style="display: none;">
   </div>
 </div>
 
+<!-- Info flutuante (requisições URL/Busca direta) -->
 <div id="info">Carregando sistema...</div>
+
+<!-- Painel Acordeão Lateral Direito (Exibição dos lotes na prateleira) -->
+<div id="painelPrateleira">
+  <div class="cabecalho-painel">
+    <span id="tituloPrateleira">POSIÇÃO: -</span>
+    <button class="fechar-btn" onclick="fecharPainelPrateleira()">×</button>
+  </div>
+  <div class="conteudo-painel" id="listaLotesPrateleira">
+    <!-- Itens populados via JS -->
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
@@ -93,13 +202,15 @@ import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/js
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
 
 // ================== VARIÁVEIS GLOBAIS & PERSISTÊNCIA ==================
-// Tenta carregar do cache do navegador ao abrir
 let lotes = JSON.parse(localStorage.getItem('estoque_osg_cache')) || {};
 let modelo;
 let objetoSelecionado = null;
 
-// ================== LÓGICA DO EXCEL ==================
-// ================== LÓGICA DO EXCEL (VERSÃO PARA MOVIMENTAÇÕES) ==================
+// Configuração para Raycasting (Clique no 3D)
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// ================== LÓGICA DO EXCEL (PROCESSAMENTO DE ÚLTIMA LINHA) ==================
 document.getElementById('input-excel').addEventListener('change', function(e) {
     const reader = new FileReader();
     const file = e.target.files[0];
@@ -119,17 +230,20 @@ document.getElementById('input-excel').addEventListener('change', function(e) {
         rows.forEach((row, index) => {
             if (index === 0) return; // Pula cabeçalho
 
-            const itemID    = row[0]; // Coluna A
+            // Lê as colunas correspondentes de sua planilha XLSX
+            const itemID    = row[0]; // Coluna A (Lote / Item Fixo)
             const ht        = row[1]; // Coluna B
             const bitola    = row[2]; // Coluna C
-            const posicao   = row[3]; // Coluna D
-            const saldo     = row[7]; // Coluna H (Saldo Atual)
+            const posicao   = row[3]; // Coluna D (Localização)
+            const saldo     = row[7]; // Coluna H (Qtd_Atual / Saldo Atual)
 
             if (itemID) {
                 const idFormatado = itemID.toString().trim();
                 
-                // Como é um banco de movimentação, o script vai atualizando o objeto.
-                // A última linha do Excel para este ID será a que vai prevalecer no App.
+                // 🎯 O PULO DO GATO DE ADS:
+                // Como as movimentações repetem o mesmo lote nas linhas abaixo,
+                // a lógica de salvar na mesma chave (idFormatado) garante que
+                // a última linha lida (a mais recente) sobrescreva as anteriores.
                 novosLotes[idFormatado] = {
                     pos: posicao ? posicao.toString().trim() : "N/A",
                     produto: "MACHO",
@@ -140,7 +254,6 @@ document.getElementById('input-excel').addEventListener('change', function(e) {
             }
         });
 
-        // Salva na memória local (cache)
         lotes = novosLotes;
         localStorage.setItem('estoque_osg_cache', JSON.stringify(lotes));
 
@@ -168,7 +281,7 @@ dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
 const loader = new GLTFLoader();
-// ================== CARREGAMENTO DO MODELO ==================
+
 // ================== CARREGAMENTO DO MODELO ==================
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
@@ -176,7 +289,6 @@ loader.load('estoque.glb', (gltf) => {
     console.log("Modelo 3D carregado com sucesso!");
 
     const params = new URLSearchParams(window.location.search);
-    // Pegamos os dados e limpamos espaços extras
     const dadoUrl = params.get("pos") ? params.get("pos").trim() : null;
     const loteUrl = params.get("lote") ? params.get("lote").trim() : null;
     const bitolaUrl = params.get("bitola");
@@ -184,10 +296,8 @@ loader.load('estoque.glb', (gltf) => {
     const qtdUrl = params.get("qtd");
 
     if (dadoUrl) {
-        // Aguarda 2.5 segundos para garantir que o navegador processou a geometria para o zoom
         setTimeout(() => {
             if (loteUrl) {
-                // Caso A: Power Apps mandou tudo mastigado
                 const dadosDiretos = {
                     pos: dadoUrl,
                     BITOLA: bitolaUrl || "-",
@@ -198,21 +308,20 @@ loader.load('estoque.glb', (gltf) => {
                 mostrarInfo(loteUrl, dadosDiretos);
             } 
             else {
-                // Caso B: Power Apps mandou só a posição, buscamos no cache do Excel (localStorage)
                 let codigoItem = Object.keys(lotes).find(key => lotes[key].pos === dadoUrl);
                 if (codigoItem) {
                     destacar(dadoUrl);
                     mostrarInfo(codigoItem, lotes[codigoItem]);
                 } else {
                     destacar(dadoUrl);
-                    document.getElementById("info").innerHTML = `<b>Localização:</b> ${dadoUrl} <br> <i>Bipe o lote no Power Apps.</i>`;
+                    document.getElementById("info").innerHTML = `<b>Localização:</b> ${dadoUrl} <br> <i>Sem registro local.</i>`;
                 }
             }
         }, 2500); 
     }
 });
 
-// ================== FUNÇÕES DE BUSCA ==================
+// ================== FUNÇÕES DE BUSCA DIRECTA ==================
 function buscarLote() {
     const valor = document.getElementById("busca").value.trim();
     const lote = lotes[valor];
@@ -220,6 +329,7 @@ function buscarLote() {
     if (lote) {
         destacar(lote.pos);
         mostrarInfo(valor, lote);
+        gerarListaLotesPrateleira(lote.pos); // Abre também o painel detalhado da prateleira dela
     } else {
         alert("Item '" + valor + "' não encontrado nos dados carregados.");
     }
@@ -241,6 +351,116 @@ function mostrarInfo(codigo, lote) {
     `;
 }
 
+// ================== LÓGICA DE CLIQUE NO OBJETO 3D (RAYCASTING) ==================
+window.addEventListener('click', onDocumentMouseDown, false);
+
+function onDocumentMouseDown(event) {
+    // Ignora cliques que acontecem sobre botões ou campos de texto HTML
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.tagName === 'LABEL') {
+        return;
+    }
+
+    // Traduz as coordenadas do mouse no navegador para o plano de projeção 3D
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    if (modelo) {
+        // Encontra interseção com os subobjetos da cena 3D
+        const intersects = raycaster.intersectObjects(modelo.children, true);
+
+        if (intersects.length > 0) {
+            // Pega o primeiro objeto atingido e sobe até encontrar o grupo ou objeto com nome (prateleira)
+            let objClicado = intersects[0].object;
+            while (objClicado && objClicado.parent && !objClicado.name) {
+                objClicado = objClicado.parent;
+            }
+
+            if (objClicado && objClicado.name) {
+                const nomePosicao = objClicado.name.trim();
+                console.log("Objeto Clicado no 3D: " + nomePosicao);
+                
+                destacar(nomePosicao);
+                gerarListaLotesPrateleira(nomePosicao);
+            }
+        }
+    }
+}
+
+// ================== CONSTRUÇÃO DA LISTA INTERATIVA (LATERAL DIREITA) ==================
+function gerarListaLotesPrateleira(nomePrateleira) {
+    const painel = document.getElementById("painelPrateleira");
+    const titulo = document.getElementById("tituloPrateleira");
+    const containerLista = document.getElementById("listaLotesPrateleira");
+
+    titulo.innerText = `POSIÇÃO: ${nomePrateleira}`;
+    containerLista.innerHTML = ""; // Limpa a listagem anterior
+
+    // 🎯 FILTRO E SELEÇÃO DE ITENS DO EXCEL
+    // Buscamos dentro da base carregada de lotes quais pertencem a esta prateleira específica
+    let itensDaPrateleira = [];
+    for (let codLote in lotes) {
+        if (lotes[codLote].pos === nomePrateleira) {
+            itensDaPrateleira.push({
+                codigo: codLote,
+                details: lotes[codLote]
+            });
+        }
+    }
+
+    if (itensDaPrateleira.length === 0) {
+        containerLista.innerHTML = `<div style="text-align: center; color: #777; font-style: italic; margin-top: 20px;">Nenhum item cadastrado nesta localização.</div>`;
+    } else {
+        // Popula a listagem gerando os cards expansíveis (Estilo Acordeão)
+        itensDaPrateleira.forEach(item => {
+            const card = document.createElement("div");
+            card.className = "item-card";
+
+            card.innerHTML = `
+                <div class="item-header">
+                    <span>${item.codigo}</span>
+                    <span class="indicador-expand">▶</span>
+                </div>
+                <div class="item-details">
+                    <b>Bitola:</b> ${item.details.BITOLA} <br>
+                    <b>HT:</b> ${item.details.HT} <br>
+                    <b>Saldo Atual:</b> <span style="font-weight: bold; color: ${item.details.qtd > 0 ? 'green' : 'red'}">${item.details.qtd}</span>
+                </div>
+            `;
+
+            // Configura o evento de clique para abrir/fechar os detalhes
+            const header = card.querySelector(".item-header");
+            const details = card.querySelector(".item-details");
+
+            header.addEventListener("click", () => {
+                const ativo = card.classList.contains("ativo");
+                
+                // Fecha outros cards que estejam abertos
+                document.querySelectorAll(".item-card").forEach(c => {
+                    c.classList.remove("ativo");
+                    c.querySelector(".item-details").style.display = "none";
+                });
+
+                if (!ativo) {
+                    card.classList.add("ativo");
+                    details.style.display = "block";
+                }
+            });
+
+            containerLista.appendChild(card);
+        });
+    }
+
+    painel.style.display = "flex"; // Mostra o painel
+}
+
+// Expõe globalmente a função de fechar do painel
+window.fecharPainelPrateleira = function() {
+    document.getElementById("painelPrateleira").style.display = "none";
+};
+
+// ================== FUNÇÕES DE DESTAQUE & ZOOM ==================
 function destacar(nome) {
     if (!modelo) return;
 
@@ -255,7 +475,7 @@ function destacar(nome) {
 
     const obj = modelo.getObjectByName(nome);
     if (!obj) {
-        alert("Aviso: Posição " + nome + " não existe no modelo 3D.");
+        console.warn("Aviso: Posição " + nome + " não existe no modelo 3D.");
         return;
     }
 
