@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
+  <meta charset="UTF-8">
   <title>Mapa 3D Estoque OSG</title>
   <style>
-    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial; background: #f0f0f0; }
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; background: #f0f0f0; }
     canvas { display: block; }
     
     #menuLateral {
@@ -33,25 +34,27 @@
       border-radius: 10px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.2);
       z-index: 10;
-      min-width: 250px;
+      min-width: 260px;
       max-height: 350px;
       overflow-y: auto;
       border-left: 5px solid #002D72;
       transition: all 0.3s ease;
+      font-size: 13px;
+      line-height: 1.6;
     }
 
-    /* Painel Lateral Direito (Prateleira Clicada) */
+    /* PAINEL LATERAL DIREITO - DESIGN OTIMIZADO */
     #painelPrateleira {
       position: absolute;
       top: 20px;
       right: 20px;
-      width: 320px;
-      max-height: 85vh;
+      width: 360px; /* Largura expandida para acomodar textos sem encavalar */
+      max-height: 90vh;
       background: rgba(255, 255, 255, 0.98);
-      border-radius: 10px;
-      box-shadow: 0 4px 25px rgba(0,0,0,0.2);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.25);
       border: 1px solid #ccc;
-      z-index: 10;
+      z-index: 100;
       display: none;
       flex-direction: column;
       overflow: hidden;
@@ -66,22 +69,31 @@
     .cabecalho-painel {
       background: #002D72;
       color: white;
-      padding: 12px 15px;
+      padding: 14px 18px;
       font-weight: bold;
-      font-size: 14px;
+      font-size: 15px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
 
     .fechar-btn {
-      background: none;
+      background: rgba(255,255,255,0.2);
       border: none;
       color: white;
-      font-size: 18px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 16px;
       cursor: pointer;
       font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
     }
+    .fechar-btn:hover { background: rgba(255,255,255,0.4); }
 
     .conteudo-painel {
       padding: 15px;
@@ -89,45 +101,71 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px; /* Distância segura entre os cards */
     }
 
+    /* ESTILIZAÇÃO DOS CARDS DE LOTE */
     .item-card {
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      overflow: hidden;
-      background: #fafafa;
-      transition: 0.2s;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .item-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-color: #002D72;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
 
     .item-header {
-      padding: 10px 12px;
-      background: #f1f5f9;
+      padding: 12px 14px;
+      background: #f8fafc;
       cursor: pointer;
       display: flex;
       justify-content: space-between;
-      font-weight: bold;
+      align-items: center;
+      font-weight: 600;
       font-size: 13px;
-      color: #334155;
-      border-bottom: 1px solid #e2e8f0;
+      color: #1e293b;
+      border-bottom: 1px solid transparent;
     }
 
+    .item-card.ativo .item-header {
+      border-bottom-color: #e2e8f0;
+      background: #f1f5f9;
+    }
+
+    .badge-qtd {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-verde { background: #dcfce7; color: #15803d; }
+    .badge-vermelha { background: #fee2e2; color: #b91c1c; }
+
     .item-details {
-      padding: 12px;
+      padding: 14px;
       font-size: 12px;
-      line-height: 1.5;
-      background: white;
+      line-height: 1.7;
+      background: #ffffff;
       display: none;
+      color: #334155;
+    }
+
+    .item-details b {
+      color: #0f172a;
     }
 
     .indicador-expand {
       transition: transform 0.2s;
+      font-size: 10px;
+      color: #64748b;
+      margin-left: 8px;
     }
     .item-card.ativo .indicador-expand {
       transform: rotate(90deg);
+      color: #002D72;
     }
 
     input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
@@ -141,7 +179,7 @@
       font-weight: bold;
       transition: 0.3s;
     }
-    button:hover { background: #001a4d; transform: scale(1.05); }
+    button:hover { background: #001a4d; transform: scale(1.03); }
 
     .excel-label {
       display: block;
@@ -214,7 +252,7 @@ function processarDadosExcel(rows) {
     let novosLotes = {};
 
     rows.forEach((row, index) => {
-        if (index === 0) return; // Ignores header
+        if (index === 0) return;
 
         const itemID    = row[0]; // Coluna A (Título)
         const ht        = row[1]; // Coluna B (HT)
@@ -227,9 +265,6 @@ function processarDadosExcel(rows) {
             const idFormatado = itemID.toString().trim();
             const qtdNum = (saldo !== undefined && saldo !== "") ? parseFloat(saldo) : 0;
             
-            // FILTRO DE ÚLTIMA LINHA: Como a planilha é inserida via append,
-            // as linhas inferiores são sempre mais recentes temporalmente.
-            // Sobrescrevemos diretamente para salvar apenas o estado mais atual do lote.
             novosLotes[idFormatado] = {
                 pos: posicao ? posicao.toString().trim() : "N/A",
                 qtd: qtdNum,
@@ -243,7 +278,6 @@ function processarDadosExcel(rows) {
     lotes = novosLotes;
     localStorage.setItem('estoque_osg_cache', JSON.stringify(lotes));
     
-    // Contagem de lotes únicos no estoque
     const qtdAtivos = Object.values(lotes).filter(item => item.qtd > 0).length;
     document.getElementById("info").innerText = `Estoque sincronizado: ${Object.keys(lotes).length} lotes mapeados (${qtdAtivos} com saldo).`;
 }
@@ -285,7 +319,7 @@ document.getElementById('input-excel').addEventListener('change', function(e) {
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         processarDadosExcel(rows);
-        alert("Planilha atualizada com sucesso! Apenas os saldos mais recentes foram considerados.");
+        alert("Planilha atualizada com sucesso!");
     };
 });
 
@@ -312,7 +346,6 @@ const loader = new GLTFLoader();
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
     scene.add(modelo);
-    console.log("Cenário 3D de estoque carregado!");
 
     const params = new URLSearchParams(window.location.search);
     const dadoUrl = params.get("pos") ? params.get("pos").trim() : null;
@@ -346,12 +379,12 @@ document.getElementById('busca').addEventListener('keypress', (e) => {
 
 function mostrarInfo(codigo, lote) {
     document.getElementById("info").innerHTML = `
-      <div style="color: #002D72; font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 5px;">DETALHES DO ITEM</div>
+      <div style="color: #002D72; font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 8px; padding-bottom: 4px;">DETALHES DO ITEM</div>
       <b>Lote:</b> ${codigo} <br>
       <b>Bitola:</b> ${lote.BITOLA} <br>
       <b>HT:</b> ${lote.HT} <br>
-      <b>Saldo Atual:</b> <span style="color: ${lote.qtd > 0 ? 'green' : 'red'}; font-weight: bold;">${lote.qtd}</span> <br>
-      <b>Última Movimentação:</b> ${lote.dataUltima || "-"} <br>
+      <b>Saldo Atual:</b> <span style="color: ${lote.qtd > 0 ? '#15803d' : '#b91c1c'}; font-weight: bold;">${lote.qtd}</span> <br>
+      <b>Última Movimentação:</b> ${lote.DATA_NOVA || "-"} <br>
       <b>Localização:</b> <mark>${lote.pos}</mark>
     `;
 }
@@ -405,25 +438,26 @@ function gerarListaLotesPrateleira(nomePrateleira) {
     }
 
     if (itensDaPrateleira.length === 0) {
-        containerLista.innerHTML = `<div style="text-align: center; color: #777; font-style: italic; margin-top: 20px;">Nenhum lote cadastrado nesta localização.</div>`;
+        containerLista.innerHTML = `<div style="text-align: center; color: #64748b; font-style: italic; padding: 20px;">Nenhum lote cadastrado nesta localização.</div>`;
     } else {
         itensDaPrateleira.forEach(item => {
             const card = document.createElement("div");
             card.className = "item-card";
 
-            // HTML Atualizado com Data e Quantidade Atual no Armário
+            const classeBadge = item.details.qtd > 0 ? 'badge-verde' : 'badge-vermelha';
+
             card.innerHTML = `
                 <div class="item-header">
                     <span>${item.codigo}</span>
-                    <span style="font-size: 11px; color: ${item.details.qtd > 0 ? '#15803d' : '#b91c1c'}; font-weight: bold;">
-                        Qtd: ${item.details.qtd}
-                    </span>
-                    <span class="indicador-expand">▶</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="badge-qtd ${classeBadge}">Qtd: ${item.details.qtd}</span>
+                        <span class="indicador-expand">▶</span>
+                    </div>
                 </div>
                 <div class="item-details">
-                    <b>Bitola:</b> ${item.details.BITOLA} <br>
-                    <b>HT:</b> ${item.details.HT} <br>
-                    <b>Qtd Atual no Armário:</b> <span style="font-weight: bold; color: ${item.details.qtd > 0 ? 'green' : 'red'};">${item.details.qtd}</span> <br>
+                    <b>Bitola:</b> ${item.details.BITOLA}<br>
+                    <b>HT:</b> ${item.details.HT}<br>
+                    <b>Qtd Atual no Armário:</b> <span style="font-weight: bold; color: ${item.details.qtd > 0 ? '#15803d' : '#b91c1c'};">${item.details.qtd}</span><br>
                     <b>Última Movimentação:</b> ${item.details.dataUltima || "-"}
                 </div>
             `;
@@ -451,6 +485,10 @@ function gerarListaLotesPrateleira(nomePrateleira) {
 
     painel.style.display = "flex"; 
 }
+
+window.fecharPainelPrateleira = function() {
+    document.getElementById("painelPrateleira").style.display = "none";
+};
 
 function destacar(nome) {
     if (!modelo) return;
