@@ -351,6 +351,7 @@ function mostrarInfo(codigo, lote) {
       <b>Bitola:</b> ${lote.BITOLA} <br>
       <b>HT:</b> ${lote.HT} <br>
       <b>Saldo Atual:</b> <span style="color: ${lote.qtd > 0 ? 'green' : 'red'}; font-weight: bold;">${lote.qtd}</span> <br>
+      <b>Última Movimentação:</b> ${lote.dataUltima || "-"} <br>
       <b>Localização:</b> <mark>${lote.pos}</mark>
     `;
 }
@@ -410,15 +411,20 @@ function gerarListaLotesPrateleira(nomePrateleira) {
             const card = document.createElement("div");
             card.className = "item-card";
 
+            // HTML Atualizado com Data e Quantidade Atual no Armário
             card.innerHTML = `
                 <div class="item-header">
                     <span>${item.codigo}</span>
+                    <span style="font-size: 11px; color: ${item.details.qtd > 0 ? '#15803d' : '#b91c1c'}; font-weight: bold;">
+                        Qtd: ${item.details.qtd}
+                    </span>
                     <span class="indicador-expand">▶</span>
                 </div>
                 <div class="item-details">
                     <b>Bitola:</b> ${item.details.BITOLA} <br>
                     <b>HT:</b> ${item.details.HT} <br>
-                    <b>Saldo Atual:</b> <span style="font-weight: bold; color: ${item.details.qtd > 0 ? 'green' : 'red'}">${item.details.qtd}</span>
+                    <b>Qtd Atual no Armário:</b> <span style="font-weight: bold; color: ${item.details.qtd > 0 ? 'green' : 'red'};">${item.details.qtd}</span> <br>
+                    <b>Última Movimentação:</b> ${item.details.dataUltima || "-"}
                 </div>
             `;
 
@@ -445,10 +451,6 @@ function gerarListaLotesPrateleira(nomePrateleira) {
 
     painel.style.display = "flex"; 
 }
-
-window.fecharPainelPrateleira = function() {
-    document.getElementById("painelPrateleira").style.display = "none";
-};
 
 function destacar(nome) {
     if (!modelo) return;
