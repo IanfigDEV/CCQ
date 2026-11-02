@@ -234,6 +234,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/DRACOLoader.js'; // <-- NOVA LINHA AQUI
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js';
 
 // ================== LINK DO SHAREPOINT ==================
@@ -342,6 +343,11 @@ dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
 const loader = new GLTFLoader();
+
+// --- CONFIGURAÇÃO DO DRACO ADICIONADA AQUI ---
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+loader.setDRACOLoader(dracoLoader);
 
 loader.load('estoque.glb', (gltf) => {
     modelo = gltf.scene;
